@@ -124,7 +124,7 @@ class ServerWorker(QObject):
             elif message_type == "sequence info":
                 seq_info = data_object["payload"]
                 with open(self.parent.defaults["scan_file_name"]["default"], "w") as f:
-                    f.write(seq_info)
+                    seq_info.write(f)
 
                 # Then, we turn on the camera
                 self.start_signal.emit()
@@ -876,6 +876,10 @@ class Control(Scrollarea):
         self.y_stand_dev.setText("0")
         self.peak.setText("0")
 
+        self.scan_config = configparser.ConfigParser()
+        self.scan_config.optionxform = str
+        self.scan_config.read(self.parent.defaults["scan_file_name"]["default"])
+
         # initialize a hdf group if image saving is required
         if self.img_save:
             # file name of the hdf file we save image to
@@ -883,12 +887,10 @@ class Control(Scrollarea):
 
             os.makedirs(os.path.dirname(self.hdf_filename), exist_ok=True)
             with h5py.File(self.hdf_filename, "a") as hdf_file:
-                self.hdf_group_name = self.run_name_le.text()+"_"+time.strftime("%Y%m%d_%H%M%S")
+                self.hdf_group_name = self.run_name_le.text()+"_"+self.scan_config["general"]["timestamp"]
                 hdf_file.create_group(self.hdf_group_name)
 
-        self.scan_config = configparser.ConfigParser()
-        self.scan_config.optionxform = str
-        self.scan_config.read(self.parent.defaults["scan_file_name"]["default"])
+        
         self.num_img_to_take_sb.setValue(self.scan_config["general"].getint("element_number"))
         # num = (self.scan_config["general"].getint("image_number") + self.scan_config["general"].getint("bkg_image_number")) * self.scan_config["general"].getint("sample_number")
         # self.num_img_to_take_sb.setValue(num)
