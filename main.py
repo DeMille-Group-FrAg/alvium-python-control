@@ -126,6 +126,15 @@ class ServerWorker(QObject):
                 with open(self.parent.defaults["scan_file_name"]["default"], "w") as f:
                     seq_info.write(f)
 
+                timestamp = seq_info["general"].get("timestamp", "")
+                local_folder = self.parent.defaults.get("scan_file_name").get("local_folder", "")
+                if timestamp and local_folder:
+                    local_filename = f"{local_folder}\\_{timestamp}.ini"
+                    with open(local_filename, "w") as f:
+                        seq_info.write(f)
+                else:
+                    logging.warning("Timestamp or local folder not found; skipping local save.")
+
                 # Then, we turn on the camera
                 self.start_signal.emit()
                 confirm_message = self.generate_message("confirm", "Received")
@@ -370,6 +379,7 @@ class CamThread(PyQt5.QtCore.QThread):
                     # convert the image data type to float, to avoid overflow
                     # print(image_type)
                     image = image.astype("float")
+                    print("The image size is ", image.shape)
                     # Software ROI - commented out; replace with calls to hardware ROI? (WEC 2025-04-21)
                     # xstart = int(image.shape[0]/2 - self.parent.device.image_shape['xmax']/2)
                     # ystart = int(image.shape[1]/2 - self.parent.device.image_shape['ymax']/2)
