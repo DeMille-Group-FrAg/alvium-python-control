@@ -10,14 +10,13 @@ import PyQt5
 import pyqtgraph as pg
 import PyQt5.QtWidgets as qt
 import os
-import qdarkstyle # see https://github.com/ColinDuquesnoy/QDarkStyleSheet
+import qdarkstyle
 from collections import deque
 from PyQt5.QtGui import QIcon
 import vmbpy
 from QTcpServer_worker import ServerWorker
 import datetime
-from PyQt5.QtGui import QIcon
-from PyQt5.QtCore import QThread, pyqtSignal, QTimer
+from PyQt5.QtCore import QThread, pyqtSignal, QTimer, QRunnable, QObject, pyqtSlot
 from camera import Alvium
 from widgets import NewSpinBox, NewDoubleSpinBox, NewComboBox, Scrollarea, imageWidget
 from camera_wrapper import AlviumCameraWrapper
@@ -489,28 +488,13 @@ class Control(Scrollarea):
         self.y_stand_dev.setText("0")
         self.peak.setText("0")
 
-        self.seq_info = seq_info
-
-        # ??????????????????????????????????????????????????
-        # # initialize a hdf group if image saving is required
-        # if self.img_save:
-        #     # file name of the hdf file we save image to
-        #     self.hdf_filename = self.parent.defaults["image_save"]["file_name"] + "_" + time.strftime("%Y%m%d") + ".hdf"
-
-        #     os.makedirs(os.path.dirname(self.hdf_filename), exist_ok=True)
-        #     with h5py.File(self.hdf_filename, "a") as hdf_file:
-        #         self.hdf_group_name = self.run_name_le.text()+"_"+self.scan_config["general"]["timestamp"]
-        #         hdf_file.create_group(self.hdf_group_name)
-
-        
+        self.seq_info = seq_info       
         self.num_img_to_take_sb.setValue(self.seq_info["general"].getint("element_number"))
-        # num = (self.scan_config["general"].getint("image_number") + self.scan_config["general"].getint("bkg_image_number")) * self.scan_config["general"].getint("sample_number")
-        # self.num_img_to_take_sb.setValue(num)
-        # self.num_img_to_take will be changed automatically
 
         self.scan_elem_name = self.seq_info["general"].get("scanned_devices_parameters")
         self.scan_elem_name = self.scan_elem_name.split(",")
         self.scan_elem_name = self.scan_elem_name[0].strip()
+
         if self.scan_elem_name:
             self.control_mode = "scan"
         else:
@@ -532,12 +516,6 @@ class Control(Scrollarea):
         else:
             logging.warning("Measurement mode not supported.")
             return
-
-        # initialize a image taking thread
-        # self.rec = CamThread(self.parent)
-        # self.rec.signal.connect(self.img_ctrl_update)
-        # self.rec.finished.connect(self.stop)
-        # self.rec.start() # start this thread
 
         self.rec = AcquisitionThread(self, self.parent.defaults, "Triggered", seq_info, abstract_camera=AlviumCameraWrapper(self.parent.device))
         self.rec.update_signal.connect(self.img_ctrl_update)
@@ -667,162 +645,7 @@ class Control(Scrollarea):
             self.parent.image_win.x_plot_roi_fit_curve.setData(np.array([]))
             self.parent.image_win.y_plot_roi_fit_curve.setData(np.array([]))
     
-    
-    
-    
-    
-    # ?????????????????????????????????????????????????????????????????
-    # # function that will be called in every experimental cycle to update GUI display
-    # @PyQt5.QtCore.pyqtSlot(dict)
-    # def img_ctrl_update(self, img_dict):
-    #     img_type = img_dict["type"] 
-    #     if img_type == "background":
-    #         img = img_dict["image"]
-    #         self.parent.image_win.imgs_dict["Background"].setImage(img, autoLevels=self.parent.image_win.auto_scale_state_dict["Background"])
-    #     elif img_type == "signal":
-    #         img = img_dict["image"]
-    #         self.parent.image_win.imgs_dict["Raw Signal"].setImage(img, autoLevels=self.parent.image_win.auto_scale_state_dict["Raw Signal"])
-    #     elif img_type == "dark":
-    #         img = img_dict["image"]
-    #         self.parent.image_win.imgs_dict["Dark"].setImage(img, autoLevels=self.parent.image_win.auto_scale_state_dict["Dark"])
 
-    #     if img_dict['counter']%2 == 1: #Checking if second image
-    #         self.num_image.setText(str(img_dict["num_image"]))
-
-    #         img = img_dict["image_post"]
-    #         if self.meas_mode == "fluorescence":
-    #             self.parent.image_win.imgs_dict["Signal minus ave bkg"].setImage(img, autoLevels=self.parent.image_win.auto_scale_state_dict["Signal minus ave bkg"])
-    #         elif self.meas_mode == "absorption":
-    #             self.parent.image_win.imgs_dict["Optical density"].setImage(img, autoLevels=self.parent.image_win.auto_scale_state_dict["Optical density"])
-    #         else:
-    #             logging.warning("Measurement type not supported")
-    #             return
-            
-    #         self.parent.image_win.x_plot_curve.setData(np.sum(img, axis=1))
-    #         self.parent.image_win.y_plot_curve.setData(np.sum(img, axis=0))
-    #         img_roi = img_dict["image_post"][self.roi["xmin"]:self.roi["xmax"], self.roi["ymin"]:self.roi["ymax"]]
-    #         self.parent.image_win.x_plot_roi_curve.setData(np.sum(img_roi, axis=1))
-    #         self.parent.image_win.y_plot_roi_curve.setData(np.sum(img_roi, axis=0))
-    #         self.num_image.setText(str(img_dict["num_image"]))
-    #         self.signal_count.setText(str(img_dict["signal_count"]))
-    #         self.signal_count_deque.append(img_dict["signal_count_raw"])
-    #         self.parent.image_win.sc_plot_curve.setData(np.array(self.signal_count_deque), symbol='o')
-
-    #         if self.control_mode == "record":
-    #             self.parent.image_win.ave_img.setImage(img_dict["image_ave"])
-    #             self.signal_count_mean.setText(str(img_dict["signal_count_ave"]))
-    #             self.signal_count_err_mean.setText(str(img_dict["signal_count_err"]))
-    #         elif self.control_mode == "scan":
-    #             x = np.array([])
-    #             y = np.array([])
-    #             err = np.array([])
-    #             for i, (param, sc_list) in enumerate(img_dict["signal_count_scan"].items()):
-    #                 x = np.append(x, float(param))
-    #                 y = np.append(y, np.mean(sc_list))
-    #                 err = np.append(err, np.std(sc_list)/np.sqrt(len(sc_list)))
-    #             # sort data in order of value of the scan parameter
-    #             order = x.argsort()
-    #             x = x[order]
-    #             y = y[order]
-    #             err = err[order]
-    #             # update "signal count vs scan parameter" plot
-    #             self.parent.image_win.scan_plot_curve.setData(x, y, symbol='o')
-    #             self.parent.image_win.scan_plot_errbar.setData(x=x, y=y, top=err, bottom=err, beam=(x[-1]-x[0])/len(x)*0.2, pen=pg.mkPen('w', width=1.2))
-                
-    #         # if img_dict["bkg_counter"] > 0:
-    #         #     img = img_dict["image_post"]
-    #         #     self.parent.image_win.imgs_dict["Signal minus ave bkg"].setImage(img, autoLevels=self.parent.image_win.auto_scale_state_dict["Signal minus ave bkg"])
-    #         #     self.parent.image_win.x_plot_curve.setData(np.sum(img, axis=1))
-    #         #     self.parent.image_win.y_plot_curve.setData(np.sum(img, axis=0))
-
-    #         #     img_roi = img_dict["image_post_roi"]
-    #         #     self.parent.image_win.x_plot_roi_curve.setData(np.sum(img_roi, axis=1))
-    #         #     self.parent.image_win.y_plot_roi_curve.setData(np.sum(img_roi, axis=0))
-
-    #         #     sc = img_dict["signal_count"]
-    #         #     self.signal_count.setText(np.format_float_scientific(sc, precision=4))
-    #         #     self.signal_count_deque.append(sc)
-    #         #     self.parent.image_win.sc_plot_curve.setData(np.array(self.signal_count_deque), symbol='o')
-
-    #         #     if self.control_mode == "record":
-    #         #         self.parent.image_win.ave_img.setImage(img_dict["image_ave"], autoLevels=self.parent.image_win.ave_img_auto_scale_state)
-    #         #         self.signal_count_mean.setText(np.format_float_scientific(img_dict["signal_count_ave"], precision=4))
-    #         #         self.signal_count_err_mean.setText(np.format_float_scientific(img_dict["signal_count_err"], precision=4))
-    #         #     elif self.control_mode == "scan":
-    #         #         x = np.array([])
-    #         #         y = np.array([])
-    #         #         err = np.array([])
-    #         #         for i, (param, sc_list) in enumerate(img_dict["signal_count_scan"].items()):
-    #         #             x = np.append(x, float(param))
-    #         #             y = np.append(y, np.mean(sc_list))
-    #         #             err = np.append(err, np.std(sc_list)/np.sqrt(len(sc_list)))
-    #         #         # sort data in order of value of the scan parameter
-    #         #         order = x.argsort()
-    #         #         x = x[order]
-    #         #         y = y[order]
-    #         #         err = err[order]
-    #         #         # update "signal count vs scan parameter" plot
-    #         #         self.parent.image_win.scan_plot_curve.setData(x, y, symbol='o')
-    #         #         self.parent.image_win.scan_plot_errbar.setData(x=x, y=y, top=err, bottom=err, beam=(x[-1]-x[0])/len(x)*0.2, pen=pg.mkPen('w', width=1.2))
-
-
-    #         if self.gaussian_fit:
-    #             # do 2D gaussian fit and update GUI displays
-    #             param = gaussianfit(img_dict["image_post_roi"])
-    #             self.amp.setText("{:.2f}".format(param["amp"]))
-    #             self.offset.setText("{:.2f}".format(param["offset"]))
-    #             self.x_mean.setText("{:.2f}".format(param["x_mean"]+self.roi["xmin"]))
-    #             self.x_stand_dev.setText("{:.2f}".format(param["x_width"]))
-    #             self.y_mean.setText("{:.2f}".format(param["y_mean"]+self.roi["ymin"]))
-    #             self.y_stand_dev.setText("{:.2f}".format(param["y_width"]))
-    #             self.peak.setText("{:.2f}".format(param["peak"]))
-                
-    #             xy = np.indices((self.roi["xmax"]-self.roi["xmin"], self.roi["ymax"]-self.roi["ymin"]))
-    #             fit = gaussian(param["amp"], param["x_mean"], param["y_mean"], param["x_width"], param["y_width"], param["offset"])(*xy)
-
-    #             self.parent.image_win.x_plot_roi_fit_curve.setData(np.sum(fit, axis=1), pen=pg.mkPen('r'))
-    #             self.parent.image_win.y_plot_roi_fit_curve.setData(np.sum(fit, axis=0), pen=pg.mkPen('r'))
-    #         else:
-    #             self.parent.image_win.x_plot_roi_fit_curve.setData(np.array([]))
-    #             self.parent.image_win.y_plot_roi_fit_curve.setData(np.array([]))
-
-    #     if self.img_save:
-    #         # save imagees to local hdf file
-    #         # in "record" mode, all images are save in the same group
-    #         # in "scan" mode, images of the same value of scan parameter are saved in the same group
-    #         with h5py.File(self.hdf_filename, "r+") as hdf_file:
-    #             root = hdf_file.require_group(self.hdf_group_name)
-    #             if self.control_mode == "scan":
-    #                 root.attrs["scanned parameter"] = self.scan_elem_name
-    #                 root.attrs["number of images"] = self.num_img_to_take
-    #                 root = root.require_group(self.scan_elem_name+"_"+img_dict["scan_param"])
-    #                 root.attrs["scanned parameter"] = self.scan_elem_name
-    #                 root.attrs["scanned param value"] = img_dict["scan_param"]
-    #             dset = root.create_dataset(
-    #                                         name                 = "image" + "_{:06d}".format(img_dict["counter"]),
-    #                                         data                 = img_dict["image"],
-    #                                         shape                = img_dict["image"].shape,
-    #                                         dtype                = "f",
-    #                                         compression          = "gzip",
-    #                                         compression_opts     = 4
-    #                                     )
-    #             # dset.attrs["signal count"] = img_dict["signal_count"]
-    #             dset.attrs["measurement type"] = self.meas_mode
-    #             dset.attrs["region of interest: xmin"] = self.roi["xmin"]
-    #             dset.attrs["region of interest: xmax"] = self.roi["xmax"]
-    #             dset.attrs["region of interest: ymin"] = self.roi["ymin"]
-    #             dset.attrs["region of interest: ymax"] = self.roi["ymax"]
-
-    #             # display as image in HDFView
-    #             # https://support.hdfgroup.org/HDF5/doc/ADGuide/ImageSpec.html
-    #             dset.attrs["CLASS"] = np.bytes_("IMAGE")
-    #             dset.attrs["IMAGE_VERSION"] = np.bytes_("1.2")
-    #             dset.attrs["IMAGE_SUBCLASS"] = np.bytes_("IMAGE_GRAYSCALE")
-    #             dset.attrs["IMAGE_WHITE_IS_ZERO"] = 0
-
-    #             if self.gaussian_fit and (img_type == "image"):
-    #                 for key, val in param.items():
-    #                     dset.attrs["2D gaussian fit"+key] = val
 
     def enable_widgets(self, arg):
         # enable/disable controls
