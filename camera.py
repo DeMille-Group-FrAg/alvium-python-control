@@ -52,15 +52,22 @@ class Alvium:
                 self.cam.set_pixel_format(PixelFormat.Mono12) # Use full bit depth
 
     def start(self):
-        # Set up an ExitStack to hold onto the vmbpy.VmbSystem and vmbpy.Camera contexts
+        # 1. Create an empty stack
         vmb_contexts = ExitStack()
+        
+        # 2. Force the VmbSystem and the Camera to open, and tell 
+        # the stack to hold the door open for us.
         vmb_contexts.enter_context(VmbSystem.get_instance())
         vmb_contexts.enter_context(self.cam)
 
+        # 3. Start dumping images into the background queue
         self.cam.start_streaming(self.queue_frame)
 
+        # 4. Tell the stack: "Hey, whenever you DO finally close, 
+        # please make sure to run stop_streaming() first."
         vmb_contexts.callback(self.cam.stop_streaming)
 
+        # 5. Hand this open stack back to whoever called start()
         return vmb_contexts
 
     def queue_frame(self, cam, stream, frame):
