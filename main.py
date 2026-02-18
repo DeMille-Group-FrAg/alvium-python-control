@@ -21,6 +21,7 @@ from camera import Alvium
 from widgets import NewSpinBox, NewDoubleSpinBox, NewComboBox, Scrollarea, imageWidget
 from camera_wrapper import AlviumCameraWrapper
 from acquisition_thread import AcquisitionThread
+from PyQt5.QtCore import QRunnable, QObject, pyqtSlot, QThreadPool
 
 window_icon_name = 'FVEY_Rosette.ico'
 
@@ -64,6 +65,34 @@ def gaussianfit(data):
     return p_dict
 
 
+# ==========================================
+# GAUSSIAN FIT WORKER (THREADING)
+# ==========================================
+
+class FitWorkerSignals(QObject):
+    """Signals for the fit worker thread."""
+    finished = pyqtSignal(dict)  # Must be pyqtSignal, NOT pyqtSlot
+
+class FitWorker(QRunnable):
+    """Worker to perform Gaussian fit in a background thread."""
+    
+    def __init__(self, data, maxfev=100):
+        super().__init__()
+        self.data = data
+        self.maxfev = maxfev
+        self.signals = FitWorkerSignals()
+
+    def run(self):
+        """Run the fit in a background thread."""
+        try:
+            # Your existing gaussianfit function - unchanged
+            result = gaussianfit(self.data)
+            self.signals.finished.emit(result)
+        except Exception as e:
+            logging.warning(f"Fit worker error: {e}")
+            self.signals.finished.emit({})
+
+
 
 # the class that places elements in UI and handles data processing
 class Control(Scrollarea):
@@ -104,6 +133,10 @@ class Control(Scrollarea):
 
         # save signal count
         self.signal_count_deque = deque([], maxlen=20)
+
+        # Gaussian fit thread pool
+        self.fit_worker_pool = QThreadPool.globalInstance()
+        self.fit_worker_pool.setMaxThreadCount(2)  # Limit concurrent fits
 
         # places GUI elements
         self.place_recording()
@@ -625,9 +658,27 @@ class Control(Scrollarea):
                 x=x, y=y, top=err, bottom=err, beam=beam_width, pen=pg.mkPen('w', width=1.2)
             )
 
-        # 8. Gaussian Fitting (Applies strictly to the chosen Target Image ROI)
+        # 8. Gaussian Fitting (NOW IN BACKGROUND THREAD)
         if self.gaussian_fit:
-            param = gaussianfit(img_roi)
+            # Ensure ROI is contiguous for faster processing
+            img_roi_contiguous = np.ascontiguousarray(img_roi)
+            
+            # Create and start fit worker
+            worker = FitWorker(img_roi_contiguous, maxfev=50)
+            worker.signals.finished.connect(self.on_fit_complete)
+            self.fit_worker_pool.start(worker)
+        else:
+            self.parent.image_win.x_plot_roi_fit_curve.setData(np.array([]))
+            self.parent.image_win.y_plot_roi_fit_curve.setData(np.array([]))
+
+
+    @pyqtSlot(dict)
+    def on_fit_complete(self, param):
+        """
+        Slot to receive Gaussian fit results from worker thread.
+        Updates GUI labels and fit curves.
+        """
+        if param:
             self.amp.setText("{:.2f}".format(param["amp"]))
             self.offset.setText("{:.2f}".format(param["offset"]))
             self.x_mean.setText("{:.2f}".format(param["x_mean"] + self.roi["xmin"]))
@@ -636,9 +687,13 @@ class Control(Scrollarea):
             self.y_stand_dev.setText("{:.2f}".format(param["y_width"]))
             self.peak.setText("{:.2f}".format(param["peak"]))
             
+            # Generate fit curve data
             xy = np.indices((self.roi["xmax"] - self.roi["xmin"], self.roi["ymax"] - self.roi["ymin"]))
-            fit = gaussian(param["amp"], param["x_mean"], param["y_mean"], param["x_width"], param["y_width"], param["offset"])(*xy)
-
+            fit = gaussian(
+                param["amp"], param["x_mean"], param["y_mean"], 
+                param["x_width"], param["y_width"], param["offset"]
+            )(*xy)
+            
             self.parent.image_win.x_plot_roi_fit_curve.setData(np.sum(fit, axis=1), pen=pg.mkPen('r'))
             self.parent.image_win.y_plot_roi_fit_curve.setData(np.sum(fit, axis=0), pen=pg.mkPen('r'))
         else:
