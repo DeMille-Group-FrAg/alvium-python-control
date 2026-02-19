@@ -6,9 +6,10 @@ from astropy.io import fits
 from datetime import datetime
 import h5py
 import time
+from GUI_modules.data_models import ImageData
 
 class AcquisitionThread(PyQt5.QtCore.QThread):
-    update_signal = PyQt5.QtCore.pyqtSignal(dict)
+    update_signal = PyQt5.QtCore.pyqtSignal(object)
     finished = PyQt5.QtCore.pyqtSignal()
 
     def __init__(self, parent, config, mode="Triggered", seq_info=None, abstract_camera=None):
@@ -115,14 +116,17 @@ class AcquisitionThread(PyQt5.QtCore.QThread):
                 subgroup_name, seq_attributes, global_seq_index, atom_image, probe_image, dark_image
             )
 
-            self.update_signal.emit({
-                "image": {"Atom": atom_image, "Probe": probe_image, "Dark": dark_image, 
-                          "Sig-Bkg": SigMinusBkg_image, "Optical Density": OD_image}, 
-                "counter": image_counter,
-                "seq_index": global_seq_index,
-                "is_scan": is_scan,
-                "subgroup_primary_value": primary_val
-            })
+            image_data = ImageData(
+                atom=atom_image,
+                probe=probe_image,
+                dark=dark_image,
+                sig_bkg=SigMinusBkg_image,
+                od=OD_image,
+                counter=image_counter,
+                is_scan=is_scan,
+                scan_value=primary_val
+            )
+            self.update_signal.emit(image_data)
 
             # Increment by 3 or 2 depending on how many actual hardware frames were pulled
             image_counter += self.images_per_run
