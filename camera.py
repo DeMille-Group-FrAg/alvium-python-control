@@ -54,8 +54,8 @@ class Alvium:
     def start(self):
         # 1. Create an empty stack
         vmb_contexts = ExitStack()
-        
-        # 2. Force the VmbSystem and the Camera to open, and tell 
+
+        # 2. Force the VmbSystem and the Camera to open, and tell
         # the stack to hold the door open for us.
         vmb_contexts.enter_context(VmbSystem.get_instance())
         vmb_contexts.enter_context(self.cam)
@@ -63,7 +63,7 @@ class Alvium:
         # 3. Start dumping images into the background queue
         self.cam.start_streaming(self.queue_frame)
 
-        # 4. Tell the stack: "Hey, whenever you DO finally close, 
+        # 4. Tell the stack: "Hey, whenever you DO finally close,
         # please make sure to run stop_streaming() first."
         vmb_contexts.callback(self.cam.stop_streaming)
 
@@ -88,6 +88,13 @@ class Alvium:
     def set_expo_time(self, expo_time):
         with VmbSystem.get_instance(), self.cam:
             self.cam.ExposureTime.set(expo_time * 1e6)
+
+    def set_gain(self, gain):
+        with VmbSystem.get_instance(), self.cam:
+            if gain < 0 or gain > 47.9:
+                logging.warning(f"Gain value {gain} is out of range (0-47.9 dB). Gain not set.")
+            else:
+                self.cam.Gain.set(gain)
 
     def get_image_shape(self):
         with VmbSystem.get_instance(), self.cam:
@@ -203,3 +210,57 @@ class pixelfly:
 
     def close(self):
         self.cam.close()
+
+
+if __name__ == "__main__":
+    import sys
+
+    # 1. Safety Check: Close any existing camera session from a previous run
+    #    If you run this script twice without closing, Vimba will throw "Device Busy"
+    if 'cam_stack' in globals() and globals()['cam_stack'] is not None:
+        print("Closing previous camera session...")
+        globals()['cam_stack'].close()
+
+    if 'cam' in globals() and globals()['cam'] is not None:
+        globals()['cam'] = None
+
+    # 2. Initialize Camera
+    #    You can hardcode an ID here, or try to find the first available one
+    camera_id = "DEV_1AB22C069010"  # Empty string usually finds the first available camera
+    try:
+        print(f"Initializing Alvium camera (ID: '{camera_id}')...")
+        cam = Alvium(camera_id)
+    except Exception as e:
+        print(f"Failed to initialize camera: {e}")
+        print("Make sure the camera is connected and Vimba drivers are installed.")
+        sys.exit(1)
+
+    # 3. Start Streaming
+    #    This returns the ExitStack that keeps the camera context alive
+    print("Starting image acquisition stream...")
+    cam_stack = cam.start()
+
+    # 4. Inject into Globals
+    #    This is the magic trick for Pyzo/IDE shells. It ensures 'cam' and 'cam_stack'
+    #    remain accessible in the console after the script finishes running.
+    globals()['cam'] = cam
+    globals()['cam_stack'] = cam_stack
+
+    # 5. Print Interactive Help
+    print("\n" + "="*50)
+    print(" CAMERA READY FOR INTERACTIVE TESTING")
+    print("="*50)
+    print("The following variables are now available in your shell:")
+    print("  - cam        : The Alvium interface object")
+    print("  - cam_stack  : The context manager (keep this alive!)")
+    print("\nQuick Commands to try:")
+    print("  > cam.num_images_available()       # Check buffer")
+    print("  > cam.software_trigger()           # Snap an image")
+    print("  > img = cam.read_image()           # Get the image (numpy array)")
+    print("  > cam.cam.Gain.get()               # Read current Gain")
+    print("  > cam.cam.Gain.set(5.0)            # Set Gain to 5.0 dB")
+    print("  > cam.set_expo_time(0.01)          # Set Exposure to 10ms")
+    print("\nCleanup:")
+    print("  > cam_stack.close()                # IMPORTANT: Run this before closing shell")
+    print("="*50 + "\n")
+

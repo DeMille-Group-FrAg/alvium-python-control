@@ -354,6 +354,14 @@ class Control(Scrollarea):
         expo_layout.addWidget(self.expo_unit_cb)
         cam_ctrl_frame.addRow("Exposure time:", expo_box)
 
+        # Set gain (it's a simple double spinbox in dB)
+        gain_cf = self.parent.defaults["gain"]
+        gain_min = gain_cf.getfloat("min")
+        gain_max = gain_cf.getfloat("max")
+        self.gain_dsb = NewDoubleSpinBox(range=(gain_min, gain_max), decimals=1)
+        self.gain_dsb.valueChanged[float].connect(lambda val: self.parent.device.set_gain(val))
+        cam_ctrl_frame.addRow("Gain (dB):", self.gain_dsb)
+
         # set binning
         self.bin_horizontal = NewSpinBox(range=self.parent.device.BIN_RANGE)
         self.bin_vertical = NewSpinBox(range=self.parent.device.BIN_RANGE)
@@ -808,6 +816,7 @@ class Control(Scrollarea):
         config["camera_control"]["trigger_mode"] = t
         config["camera_control"]["exposure_time"] = str(self.expo_dsb.value())
         config["camera_control"]["exposure_unit"] = self.expo_unit_cb.currentText()
+        config["camera_control"]["gain"] = str(self.gain_dsb.value())
         config["camera_control"]["binning_horizontal"] = str(self.bin_horizontal.value())
         config["camera_control"]["binning_vertical"] = str(self.bin_vertical.value())
 
@@ -866,6 +875,8 @@ class Control(Scrollarea):
         # make sure expo_unit_cb changes before time, because it changes expo_dsb range
         self.expo_unit_cb.setCurrentText(config["camera_control"]["exposure_unit"])
         self.expo_dsb.setValue(config["camera_control"].getfloat("exposure_time"))
+
+        self.gain_dsb.setValue(config["camera_control"].getfloat("gain"))
 
         self.bin_horizontal.setValue(int(config["camera_control"].get("binning_horizontal")))
         self.bin_vertical.setValue(int(config["camera_control"].get("binning_vertical")))
